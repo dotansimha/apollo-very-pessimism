@@ -1,10 +1,26 @@
 import { ApolloClient, InMemoryCache, ObservableQuery } from "@apollo/client";
-import { SchemaLink } from "apollo-link-schema";
+import { SchemaLink } from "@apollo/client/link/schema";
 import { buildSchema, parse } from "graphql";
 import weak from "weak-napi";
 
+function makeStartStop() {
+  let startedAt: number;
+
+  return {
+    start() {
+      startedAt = Date.now();
+    },
+    stop(label: string) {
+      const stoppedAt = Date.now();
+
+      console.log(`${label} took`, stoppedAt - startedAt)
+    }
+  }
+}
+
 describe("Memory leaks", () => {
   let client: ApolloClient<any> | null = null;
+  let time: ReturnType<typeof makeStartStop>;
 
   beforeEach(() => {
     const cache = new InMemoryCache();
@@ -15,6 +31,7 @@ describe("Memory leaks", () => {
       cache,
       link: link as any,
     });
+    time = makeStartStop()
   });
 
   afterEach(() => {
@@ -41,8 +58,13 @@ describe("Memory leaks", () => {
       weak(myContext, function () {
         console.log(`YES! "myContext" is no longer in memory!`);
 
+        time.stop(`GC`)
         done();
-      });
+      })
+
+      setTimeout(() => {
+        debugger;
+      }, 7 * 1000)
 
       // Create teh GraphQL query object, and watch it.
       // Here, we pass `context` as our custom object. Later - you'll see that Apollo retains it in memory.
@@ -72,10 +94,11 @@ describe("Memory leaks", () => {
           // MAKE A HEAP SNAPSHOT NOW!
           // You should see that Apollo still holds a reference to our object, so this test will
           // never resolve, and fails on timeout.
+          time.start()
           debugger;
         }
       });
     },
-    20 * 1000
+    30 * 1000
   );
 });
