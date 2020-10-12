@@ -16,3 +16,7 @@ Related Issues:
 2. Run `yarn test` to run Jest and the test - if you are getting a timeout after 20s, it means that Apollo-Client still holds a reference to our object.
 3. You can run `yarn test:debug` and and then attach Chrome DevTools - you should be able to use that to take Heap snapshots (no need for breakpoints, I added `debugger` statements on the important places, and it tells you when to take the snapshot).
 4. If you'll comment out the L51 (`context: myContext,`) - test will pass.
+
+## Heap Snapshot
+
+You can find a heap snapshot the describes the issue in this repo (`Heap-20201012T074835.heapsnapshot.zip`). You can open it with Chrome DevTools and inspect. This heap snapshot was saved after `unsubscribe` has been called, and after GC has been triggered.
