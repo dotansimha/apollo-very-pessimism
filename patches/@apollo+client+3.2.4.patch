@@ -1,0 +1,167 @@
+diff --git a/node_modules/@apollo/client/core/ApolloClient.js b/node_modules/@apollo/client/core/ApolloClient.js
+index 54f30b6..d0563aa 100644
+--- a/node_modules/@apollo/client/core/ApolloClient.js
++++ b/node_modules/@apollo/client/core/ApolloClient.js
+@@ -42,9 +42,10 @@ var ApolloClient = (function () {
+         var defaultConnectToDevTools = process.env.NODE_ENV !== 'production' &&
+             typeof window !== 'undefined' &&
+             !window.__APOLLO_CLIENT__;
+-        if (typeof connectToDevTools === 'undefined'
++        var shouldConnectToDevTools = typeof connectToDevTools === 'undefined'
+             ? defaultConnectToDevTools
+-            : connectToDevTools && typeof window !== 'undefined') {
++            : connectToDevTools && typeof window !== 'undefined'
++        if (shouldConnectToDevTools) {
+             window.__APOLLO_CLIENT__ = this;
+         }
+         if (!hasSuggestedDevtools && process.env.NODE_ENV !== 'production') {
+@@ -81,7 +82,7 @@ var ApolloClient = (function () {
+             },
+             localState: this.localState,
+             assumeImmutableResults: assumeImmutableResults,
+-            onBroadcast: function () {
++            onBroadcast: shouldConnectToDevTools ? function () {
+                 if (_this.devToolsHookCb) {
+                     _this.devToolsHookCb({
+                         action: {},
+@@ -92,7 +93,7 @@ var ApolloClient = (function () {
+                         dataWithOptimisticResults: _this.cache.extract(true),
+                     });
+                 }
+-            },
++            } : undefined,
+         });
+     }
+     ApolloClient.prototype.stop = function () {
+diff --git a/node_modules/@apollo/client/core/MutationStore.js b/node_modules/@apollo/client/core/MutationStore.js
+index 4c467f7..fd97c95 100644
+--- a/node_modules/@apollo/client/core/MutationStore.js
++++ b/node_modules/@apollo/client/core/MutationStore.js
+@@ -20,7 +20,10 @@ var MutationStore = (function () {
+         var mutation = this.store[mutationId];
+         if (mutation) {
+             mutation.loading = false;
+-            mutation.error = error;
++            
++            if (error) {
++                mutation.error = error;
++            }
+         }
+     };
+     MutationStore.prototype.markMutationResult = function (mutationId) {
+diff --git a/node_modules/@apollo/client/core/QueryManager.js b/node_modules/@apollo/client/core/QueryManager.js
+index addb7d1..12a4ceb 100644
+--- a/node_modules/@apollo/client/core/QueryManager.js
++++ b/node_modules/@apollo/client/core/QueryManager.js
+@@ -9,10 +9,13 @@ import { ObservableQuery } from "./ObservableQuery.js";
+ import { NetworkStatus, isNetworkRequestInFlight } from "./networkStatus.js";
+ import { LocalState } from "./LocalState.js";
+ import { QueryInfo, shouldWriteResult } from "./QueryInfo.js";
++
++function noop() {}
++
+ var hasOwnProperty = Object.prototype.hasOwnProperty;
+ var QueryManager = (function () {
+     function QueryManager(_a) {
+-        var cache = _a.cache, link = _a.link, _b = _a.queryDeduplication, queryDeduplication = _b === void 0 ? false : _b, _c = _a.onBroadcast, onBroadcast = _c === void 0 ? function () { return undefined; } : _c, _d = _a.ssrMode, ssrMode = _d === void 0 ? false : _d, _e = _a.clientAwareness, clientAwareness = _e === void 0 ? {} : _e, localState = _a.localState, assumeImmutableResults = _a.assumeImmutableResults;
++        var cache = _a.cache, link = _a.link, _b = _a.queryDeduplication, queryDeduplication = _b === void 0 ? false : _b, _c = _a.onBroadcast, onBroadcast = _c === void 0 ? noop : _c, _d = _a.ssrMode, ssrMode = _d === void 0 ? false : _d, _e = _a.clientAwareness, clientAwareness = _e === void 0 ? {} : _e, localState = _a.localState, assumeImmutableResults = _a.assumeImmutableResults;
+         this.mutationStore = new MutationStore();
+         this.clientAwareness = {};
+         this.queries = new Map();
+@@ -138,7 +141,7 @@ var QueryManager = (function () {
+                                         storeResult = result;
+                                     },
+                                     error: function (err) {
+-                                        self.mutationStore.markMutationError(mutationId, err);
++                                        self.mutationStore.markMutationError(mutationId, self.onBroadcast === noop ? undefined : err);
+                                         if (optimisticResponse) {
+                                             self.cache.removeOptimistic(mutationId);
+                                         }
+@@ -149,7 +152,7 @@ var QueryManager = (function () {
+                                     },
+                                     complete: function () {
+                                         if (error) {
+-                                            self.mutationStore.markMutationError(mutationId, error);
++                                            self.mutationStore.markMutationError(mutationId, self.onBroadcast === noop ? undefined : error);
+                                         }
+                                         if (optimisticResponse) {
+                                             self.cache.removeOptimistic(mutationId);
+diff --git a/node_modules/@apollo/client/core/core.cjs.js b/node_modules/@apollo/client/core/core.cjs.js
+index 856cb1f..5dfb0c0 100644
+--- a/node_modules/@apollo/client/core/core.cjs.js
++++ b/node_modules/@apollo/client/core/core.cjs.js
+@@ -40,7 +40,10 @@ var MutationStore = (function () {
+         var mutation = this.store[mutationId];
+         if (mutation) {
+             mutation.loading = false;
+-            mutation.error = error;
++            
++            if (error) {
++                mutation.error = error;
++            }
+         }
+     };
+     MutationStore.prototype.markMutationResult = function (mutationId) {
+@@ -982,10 +985,12 @@ function shouldWriteResult(result, errorPolicy) {
+     return writeWithErrors;
+ }
+ 
++function noop() {}
++
+ var hasOwnProperty = Object.prototype.hasOwnProperty;
+ var QueryManager = (function () {
+     function QueryManager(_a) {
+-        var cache = _a.cache, link = _a.link, _b = _a.queryDeduplication, queryDeduplication = _b === void 0 ? false : _b, _c = _a.onBroadcast, onBroadcast = _c === void 0 ? function () { return undefined; } : _c, _d = _a.ssrMode, ssrMode = _d === void 0 ? false : _d, _e = _a.clientAwareness, clientAwareness = _e === void 0 ? {} : _e, localState = _a.localState, assumeImmutableResults = _a.assumeImmutableResults;
++        var cache = _a.cache, link = _a.link, _b = _a.queryDeduplication, queryDeduplication = _b === void 0 ? false : _b, _c = _a.onBroadcast, onBroadcast = _c === void 0 ? noop : _c, _d = _a.ssrMode, ssrMode = _d === void 0 ? false : _d, _e = _a.clientAwareness, clientAwareness = _e === void 0 ? {} : _e, localState = _a.localState, assumeImmutableResults = _a.assumeImmutableResults;
+         this.mutationStore = new MutationStore();
+         this.clientAwareness = {};
+         this.queries = new Map();
+@@ -1111,7 +1116,7 @@ var QueryManager = (function () {
+                                         storeResult = result;
+                                     },
+                                     error: function (err) {
+-                                        self.mutationStore.markMutationError(mutationId, err);
++                                        self.mutationStore.markMutationError(mutationId, self.onBroadcast === noop ? undefined : err);
+                                         if (optimisticResponse) {
+                                             self.cache.removeOptimistic(mutationId);
+                                         }
+@@ -1122,7 +1127,7 @@ var QueryManager = (function () {
+                                     },
+                                     complete: function () {
+                                         if (error) {
+-                                            self.mutationStore.markMutationError(mutationId, error);
++                                            self.mutationStore.markMutationError(mutationId, self.onBroadcast === noop ? undefined : error);
+                                         }
+                                         if (optimisticResponse) {
+                                             self.cache.removeOptimistic(mutationId);
+@@ -1690,9 +1695,10 @@ var ApolloClient = (function () {
+         var defaultConnectToDevTools = process.env.NODE_ENV !== 'production' &&
+             typeof window !== 'undefined' &&
+             !window.__APOLLO_CLIENT__;
+-        if (typeof connectToDevTools === 'undefined'
++        var shouldConnectToDevTools = typeof connectToDevTools === 'undefined'
+             ? defaultConnectToDevTools
+-            : connectToDevTools && typeof window !== 'undefined') {
++            : connectToDevTools && typeof window !== 'undefined'
++        if (shouldConnectToDevTools) {
+             window.__APOLLO_CLIENT__ = this;
+         }
+         if (!hasSuggestedDevtools && process.env.NODE_ENV !== 'production') {
+@@ -1729,7 +1735,7 @@ var ApolloClient = (function () {
+             },
+             localState: this.localState,
+             assumeImmutableResults: assumeImmutableResults,
+-            onBroadcast: function () {
++            onBroadcast: shouldConnectToDevTools ? function () {
+                 if (_this.devToolsHookCb) {
+                     _this.devToolsHookCb({
+                         action: {},
+@@ -1740,7 +1746,7 @@ var ApolloClient = (function () {
+                         dataWithOptimisticResults: _this.cache.extract(true),
+                     });
+                 }
+-            },
++            } : undefined,
+         });
+     }
+     ApolloClient.prototype.stop = function () {
