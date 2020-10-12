@@ -1,0 +1,26 @@
+diff --git a/node_modules/@apollo/client/cache/cache.cjs.js b/node_modules/@apollo/client/cache/cache.cjs.js
+index 2f58ba4..67858a1 100644
+--- a/node_modules/@apollo/client/cache/cache.cjs.js
++++ b/node_modules/@apollo/client/cache/cache.cjs.js
+@@ -1506,6 +1506,8 @@ var InMemoryCache = (function (_super) {
+             this.maybeBroadcastWatch(watch);
+         }
+         return function () {
++            _this.watchDep.dirty(watch);
++            _this.maybeBroadcastWatch.delete(watch);
+             _this.watches.delete(watch);
+         };
+     };
+diff --git a/node_modules/@apollo/client/cache/inmemory/inMemoryCache.js b/node_modules/@apollo/client/cache/inmemory/inMemoryCache.js
+index b421d3a..6618215 100644
+--- a/node_modules/@apollo/client/cache/inmemory/inMemoryCache.js
++++ b/node_modules/@apollo/client/cache/inmemory/inMemoryCache.js
+@@ -129,6 +129,8 @@ var InMemoryCache = (function (_super) {
+             this.maybeBroadcastWatch(watch);
+         }
+         return function () {
++            _this.watchDep.dirty(watch);
++            _this.maybeBroadcastWatch.delete(watch);
+             _this.watches.delete(watch);
+         };
+     };

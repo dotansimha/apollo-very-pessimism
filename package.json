@@ -4,6 +4,7 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
+    "postinstall": "patch-package",
     "test:debug": "node --inspect-brk --expose-gc ./node_modules/.bin/jest --runInBand",
     "test": "node  --expose-gc ./node_modules/.bin/jest --runInBand"
   },
@@ -18,7 +19,8 @@
     "react": "^16.13.1",
     "ts-jest": "^26.4.1",
     "typescript": "^4.0.3",
-    "weak-napi": "^2.0.2"
+    "weak-napi": "^2.0.2",
+    "patch-package": "6.2.2"
   },
   "engines": {
     "node": "^10"
