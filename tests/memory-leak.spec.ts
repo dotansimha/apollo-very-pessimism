@@ -1,5 +1,6 @@
-import { ApolloClient, InMemoryCache, ObservableQuery } from "@apollo/client";
-import { SchemaLink } from "@apollo/client/link/schema";
+import { ApolloClient, ObservableQuery } from "apollo-client";
+import { SchemaLink } from "apollo-link-schema";
+import { InMemoryCache } from "apollo-cache-inmemory"
 import { buildSchema, parse } from "graphql";
 import weak from "weak-napi";
 
