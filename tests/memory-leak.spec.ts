@@ -1,132 +1,144 @@
-import { ApolloClient, InMemoryCache, ObservableQuery } from "@apollo/client";
+import {
+  ApolloClient,
+  InMemoryCache,
+  ObservableQuery,
+  ApolloLink,
+} from "@apollo/client/core";
 import { SchemaLink } from "@apollo/client/link/schema";
-import { parse, GraphQLObjectType, GraphQLSchema, GraphQLString } from "graphql";
+import { parse } from "graphql";
 import weak from "weak-napi";
-import heapdump from 'heapdump';
-import path from 'path';
+import path from "path";
+import heapdump from "heapdump";
+import { makeExecutableSchema } from "@graphql-tools/schema";
 
-function makeStartStop() {
-  let startedAt: number;
-
-  return {
-    start() {
-      startedAt = Date.now();
-    },
-    stop(label: string) {
-      const stoppedAt = Date.now();
-
-      console.log(`${label} took`, stoppedAt - startedAt)
-    }
-  }
-}
+const TIMEOUT = 30 * 1000;
 
 function makeHeapSnapshot(label: string) {
-  heapdump.writeSnapshot(`${path.resolve(__dirname, label + '.heapsnapshot')}`, (error, filename) => {
+  const file = path.resolve(
+    __dirname,
+    "../heapsnapshots",
+    label + ".heapsnapshot"
+  );
+  heapdump.writeSnapshot(file, (error) => {
     if (error) {
-      console.log('Snapshot', label, 'failed', error)
-    } else {
-      console.log('Snapshot', label, 'written to', filename)
+      console.error(`Failed to snapshot: ${label}`);
+      console.error(error);
     }
   });
 }
-
-const schema = new GraphQLSchema({
-  query: new GraphQLObjectType({
-    name: 'Query',
-    fields: {
-      foo: {
-        type: GraphQLString,
-        resolve() {
-          return 'foo'
-        }
-      }
-    }
-  })
-})
 
 describe("Memory leaks", () => {
   let client: ApolloClient<any> | null = null;
-  let time: ReturnType<typeof makeStartStop>;
+  let cache: InMemoryCache | null = null;
+  let link: ApolloLink | null = null;
 
   beforeEach(() => {
-    const cache = new InMemoryCache();
-    const link = new SchemaLink({
-      schema,
+    cache = new InMemoryCache();
+    link = new SchemaLink({
+      schema: makeExecutableSchema({
+        typeDefs: /* GraphQL */ `
+          type Query {
+            foo: String
+            user: User
+          }
+
+          type Mutation {
+            updateUser: User!
+          }
+
+          type User {
+            id: ID!
+            name: String
+          }
+        `,
+        resolvers: {
+          Query: {
+            user: () => ({ id: 1, name: "Dotan" }),
+          },
+          Mutation: {
+            updateUser: async () => {
+              throw Error("asdasd");
+            },
+          },
+        },
+      }),
     });
-    client = new ApolloClient<any>({
-      cache,
-      link: link as any,
-    });
-    time = makeStartStop()
   });
 
   afterEach(() => {
+    process.env.NODE_ENV = "test";
     client = null;
+    cache = null;
+    link = null;
   });
 
   class MyContextObject {
     public dummyData = `======================================================================================`;
   }
 
-  it(
-    "should not keep traces of context after running watchQuery",
-    (done) => {
-      // First, make we have a named object, which we can later refer to and find easily in snapshots
-      // (that's why it's a class...)
-      const obj: MyContextObject | undefined = new MyContextObject();
-      let myContext: MyContextObject | undefined = obj;
-      // If you are using `yarn test:debug`, that's a great time to go to Memory tab in
-      // DevTools, and keep a memory snapshot, you should see there that you have an object named "MyContextObject"
-      debugger;
+  function runTest(done: jest.DoneCallback, prefix: string) {
+    let myContext: MyContextObject | undefined = new MyContextObject();
 
-      // Now, we create a weak reference for that object. The reason we do that is to make sure it's being collected
-      // and removed from memory. The `done` callback is called when the object is being removed.
-      // So if this test fails => object is still in memory!
-      weak(myContext, function () {
-        console.log(`YES! "myContext" is no longer in memory!`);
+    weak(myContext, function () {
+      console.log(`YES! "myContext" is no longer in memory!`);
+      done();
+    });
 
-        time.stop(`GC`)
-        done();
-      })
-
-      setTimeout(() => {
-        makeHeapSnapshot('after-3s')
-      }, 3 * 1000)
-
-      // Create teh GraphQL query object, and watch it.
-      // Here, we pass `context` as our custom object. Later - you'll see that Apollo retains it in memory.
-      let query$: ObservableQuery | undefined = client?.watchQuery({
-        query: parse(`query test { foo }`),
+    client!
+      .mutate({
         context: myContext,
+        mutation: parse(`mutation updateUser { updateUser { id name }}`),
+      })
+      .catch(() => {
+        myContext = undefined;
+        global.gc();
+        makeHeapSnapshot(prefix + "done");
+
+        setTimeout(() => {
+          makeHeapSnapshot(prefix + "after-3-seconds");
+        }, 3 * 1000);
       });
-      // Now, subscribe to it, and wait for some data to arrive
-      let subscription:
-        | ZenObservable.Subscription
-        | undefined = query$?.subscribe((r) => {
-        // Just to make sure it's done, and ready to use, if it's still "loading", we don't care
-        if (r && r.data) {
-          if (subscription) {
-            // Subscription is done, we got the data, now let's unsubscribe from it
-            subscription.unsubscribe();
-          }
-          // Cleanup! Clear all all Apollo related variables,
-          subscription = undefined;
-          query$ = undefined;
-          // And of course, we are done with our context object, we can set it to `undefined`
-          myContext = undefined;
-          // Force garbage collector to clean everything. This should make sure we don't need to wait for idle state
-          // in order to clean the memory.
-          global.gc();
-          // If you are debugging, and using `yarn test:debug`:
-          // MAKE A HEAP SNAPSHOT NOW!
-          // You should see that Apollo still holds a reference to our object, so this test will
-          // never resolve, and fails on timeout.
-          time.start()
-          makeHeapSnapshot('unsub')
-          debugger;
-        }
+  }
+
+  it(
+    "should not keep trances of context after mutation failure (defaults)",
+    (done) => {
+      client = new ApolloClient<any>({
+        cache: cache!,
+        link: link!,
       });
+
+      runTest(done, "devtools-");
     },
-    30 * 1000
+    TIMEOUT
+  );
+
+  it(
+    "should not keep trances of context after mutation failure (devtools disabled)",
+    (done) => {
+      client = new ApolloClient<any>({
+        cache: cache!,
+        link: link!,
+        connectToDevTools: false, // disable devTools
+      });
+
+      runTest(done, "no-devtools-");
+    },
+    TIMEOUT
+  );
+
+  it(
+    "should not keep trances of context after mutation failure (devtools disabled with NODE_ENV)",
+    (done) => {
+      process.env.NODE_ENV = "production"; // disable devTools
+
+      client = new ApolloClient<any>({
+        cache: cache!,
+        link: link!,
+      });
+
+      runTest(done, "node-env-");
+    },
+    TIMEOUT
   );
 });
