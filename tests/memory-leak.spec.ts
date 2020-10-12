@@ -1,7 +1,9 @@
 import { ApolloClient, InMemoryCache, ObservableQuery } from "@apollo/client";
 import { SchemaLink } from "@apollo/client/link/schema";
-import { buildSchema, parse } from "graphql";
+import { parse, GraphQLObjectType, GraphQLSchema, GraphQLString } from "graphql";
 import weak from "weak-napi";
+import heapdump from 'heapdump';
+import path from 'path';
 
 function makeStartStop() {
   let startedAt: number;
@@ -18,6 +20,30 @@ function makeStartStop() {
   }
 }
 
+function makeHeapSnapshot(label: string) {
+  heapdump.writeSnapshot(`${path.resolve(__dirname, label + '.heapsnapshot')}`, (error, filename) => {
+    if (error) {
+      console.log('Snapshot', label, 'failed', error)
+    } else {
+      console.log('Snapshot', label, 'written to', filename)
+    }
+  });
+}
+
+const schema = new GraphQLSchema({
+  query: new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      foo: {
+        type: GraphQLString,
+        resolve() {
+          return 'foo'
+        }
+      }
+    }
+  })
+})
+
 describe("Memory leaks", () => {
   let client: ApolloClient<any> | null = null;
   let time: ReturnType<typeof makeStartStop>;
@@ -25,7 +51,7 @@ describe("Memory leaks", () => {
   beforeEach(() => {
     const cache = new InMemoryCache();
     const link = new SchemaLink({
-      schema: buildSchema(`type Query { foo: String }`),
+      schema,
     });
     client = new ApolloClient<any>({
       cache,
@@ -47,7 +73,8 @@ describe("Memory leaks", () => {
     (done) => {
       // First, make we have a named object, which we can later refer to and find easily in snapshots
       // (that's why it's a class...)
-      let myContext: MyContextObject | undefined = new MyContextObject();
+      const obj: MyContextObject | undefined = new MyContextObject();
+      let myContext: MyContextObject | undefined = obj;
       // If you are using `yarn test:debug`, that's a great time to go to Memory tab in
       // DevTools, and keep a memory snapshot, you should see there that you have an object named "MyContextObject"
       debugger;
@@ -63,8 +90,8 @@ describe("Memory leaks", () => {
       })
 
       setTimeout(() => {
-        debugger;
-      }, 7 * 1000)
+        makeHeapSnapshot('after-3s')
+      }, 3 * 1000)
 
       // Create teh GraphQL query object, and watch it.
       // Here, we pass `context` as our custom object. Later - you'll see that Apollo retains it in memory.
@@ -95,6 +122,7 @@ describe("Memory leaks", () => {
           // You should see that Apollo still holds a reference to our object, so this test will
           // never resolve, and fails on timeout.
           time.start()
+          makeHeapSnapshot('unsub')
           debugger;
         }
       });
